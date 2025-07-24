@@ -1,94 +1,66 @@
-(function () {
-  'use strict';
+(function(){
+    'use strict';
 
-  const INSTANCE = 'https://inv.nadeko.net';
+    const INSTANCE = 'https://inv.nadeko.net'; // ← можно заменить на другой живой Invidious-инстанс
 
-  function YTPComponent(object) {
-    this.render = () => this._render || (this._render = $('<div class="content__body"></div>'));
+    function addYoutubeBalancer(){
+        let network = new Lampa.Reguest();
 
-    this.start = () => {
-      Lampa.Controller.add('content', {
-        toggle: () => {
-          Lampa.Controller.collectionSet(this.render(), this.render());
-          Lampa.Controller.collectionFocus(false, this.render());
-        },
-        back: this.back.bind(this)
-      });
-      this.loadSearch();
-      Lampa.Controller.toggle('content');
-    };
+        let source = {
+            name: 'YouTube',
+            url: '',
 
-    this.back = () => Lampa.Activity.backward();
+            search: function(params, callback){
+                const query = encodeURIComponent(params.query);
+                const url = `${INSTANCE}/api/v1/search?q=${query}`;
 
-    this.loadSearch = () => {
-      const query = encodeURIComponent(object.search || object.movie.title);
-      const url = `${INSTANCE}/api/v1/search?q=${query}`;
-      new Lampa.Reguest().native(url, this.parse.bind(this), this.error.bind(this), false, { dataType: 'json' });
-    };
+                network.silent(url, function(data){
+                    let results = [];
 
-    this.parse = (json) => {
-      const items = json || [];
-      if (!items.length) {
-        this.render().html('<div style="padding:2em">Ничего не найдено</div>');
-        return;
-      }
-      items.forEach(v => {
-        const title = v.title;
-        const videoId = v.videoId;
-        const btn = $(`<div class="selector" style="padding:1em">${title}</div>`);
-        btn.on('hover:enter', () => {
-          Lampa.Player.play({
-            title: title,
-            url: `${INSTANCE}/latest_version?id=${videoId}&itag=22`,
-            isonline: true
-          });
-        });
-        this.render().append(btn);
-      });
-    };
+                    data.forEach(item => {
+                        if(item.type === 'video'){
+                            results.push({
+                                title: item.title,
+                                text: item.title,
+                                quality: { 'HD': `${INSTANCE}/latest_version?id=${item.videoId}&itag=22` },
+                                method: 'play',
+                                url: `${INSTANCE}/latest_version?id=${item.videoId}&itag=22`
+                            });
+                        }
+                    });
 
-    this.error = () => {
-      this.render().html('<div style="padding:2em">Ошибка при загрузке YouTube</div>');
-    };
+                    callback(results);
+                }, function(){
+                    callback([]);
+                });
+            },
 
-    this.pause = () => {};
-    this.stop = () => {};
-    this.destroy = () => {};
-  }
+            play: function(item, callback){
+                callback({
+                    url: item.url,
+                    quality: item.quality
+                });
+            }
+        };
 
-  function startPlugin() {
-    Lampa.Component.add('ytinvidious', YTPComponent);
+        Lampa.LampaBalancer.add('youtube', source);
+    }
 
-    Lampa.Manifest.plugins = {
-      type: 'video',
-      version: '1.0.0',
-      name: 'YouTube (Invidious)',
-      description: 'Просмотр YouTube через Invidious без блокировок'
-    };
+    function startPlugin(){
+        addYoutubeBalancer();
 
-    Lampa.Lang.add({
-      ytinvidious_watch: { ru: 'YouTube' }
-    });
+        Lampa.Manifest.plugins = Lampa.Manifest.plugins || {};
+        Lampa.Manifest.plugins['youtube_balancer'] = {
+            type: 'video',
+            version: '1.0.0',
+            name: 'YouTube (Balancer)',
+            description: 'Поиск и просмотр YouTube через Invidious'
+        };
+    }
 
-    Lampa.Listener.follow('search', e => {
-      if (e.type === 'complite') {
-        const btn = $(`<div class="full-start__button selector view--online" data-subtitle="YouTube">
-          <svg width="16" height="16" viewBox="0 0 24 24"><path fill="currentColor" d="M10 16.5V7.5L16 12L10 16.5Z"/></svg>
-          <span>YouTube</span>
-        </div>`);
-        btn.on('hover:enter', () => {
-          Lampa.Activity.replace({
-            component: 'ytinvidious',
-            search: e.data.query
-          });
-        });
-        e.object.activity.render().find('.view--search').after(btn);
-      }
-    });
-  }
+    if (!window.youtube_balancer_plugin_loaded){
+        window.youtube_balancer_plugin_loaded = true;
+        startPlugin();
+    }
 
-  if (!window.ytinvidious_plugin_loaded) {
-    window.ytinvidious_plugin_loaded = true;
-    startPlugin();
-  }
 })();
